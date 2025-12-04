@@ -4,51 +4,68 @@ import '../models/user_model.dart';
 import '../models/auth_request_model.dart';
 import '../services/api_service.dart';
 
+/// AuthController - Handles all authentication logic
+/// Extends GetxController for GetX state management
 class AuthController extends GetxController {
+  // API service instance for making HTTP requests
   final ApiService _apiService = ApiService();
+
+  // GetStorage for local storage (saving token)
   final GetStorage _storage = GetStorage();
 
-  // Observable state
-  final Rx<User?> user = Rx<User?>(null);
-  final RxBool isLoading = false.obs;
-  final RxString errorMessage = ''.obs;
+  // ============ OBSERVABLE STATE ============
+  // These use .obs to make them reactive
+  // When these values change, any Obx() widget watching them will rebuild
 
-  // Form controllers (using simple observable strings)
+  // Current logged in user (null if not logged in)
+  final Rx<User?> user = Rx<User?>(null);
+
+  // Loading state - true when API call is in progress
+  final RxBool isLoading = false.obs;
+
+  // ============ FORM INPUT VALUES ============
+  // Using RxString to store form input values reactively
   final RxString username = ''.obs;
   final RxString password = ''.obs;
   final RxString fullName = ''.obs;
   final RxString email = ''.obs;
   final RxString confirmPassword = ''.obs;
 
-  // Storage keys
+  // ============ STORAGE KEYS ============
+  // Constants for storage keys - good practice to avoid typos
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
   @override
   void onInit() {
     super.onInit();
+    // Check if user is already logged in when app starts
     checkLoginStatus();
   }
 
-  /// Check if user is already logged in
+  /// Check if user has saved session (auto-login feature)
   Future<void> checkLoginStatus() async {
     final storedToken = _storage.read(_tokenKey);
     final storedUser = _storage.read(_userKey);
 
+    // If both token and user data exist, restore the session
     if (storedToken != null && storedUser != null) {
       user.value = User.fromJson(Map<String, dynamic>.from(storedUser));
     }
   }
+
+  // ============ VALIDATION METHODS ============
 
   /// Validate email format
   String? validateEmail(String? value) {
     if (value == null || value.isEmpty) {
       return 'Email is required';
     }
+    // Simple check: must contain @ and .
     if (!value.contains('@') || !value.contains('.')) {
       return 'Please enter a valid email';
     }
-    return null;
+    return null; // null means valid
   }
 
   /// Validate password
@@ -62,7 +79,7 @@ class AuthController extends GetxController {
     return null;
   }
 
-  /// Validate confirm password
+  /// Validate confirm password matches
   String? validateConfirmPassword(String? value) {
     if (value == null || value.isEmpty) {
       return 'Please confirm your password';
@@ -73,7 +90,7 @@ class AuthController extends GetxController {
     return null;
   }
 
-  /// Validate name
+  /// Validate name is not empty
   String? validateName(String? value) {
     if (value == null || value.isEmpty) {
       return 'Name is required';
@@ -81,33 +98,42 @@ class AuthController extends GetxController {
     return null;
   }
 
-  /// Login method
+  // ============ AUTHENTICATION METHODS ============
+
+  /// Login method - calls API and saves session
   Future<bool> login() async {
+    // Validate inputs first
     if (username.value.isEmpty || password.value.isEmpty) {
+      // Show error snackbar using GetX
       Get.snackbar(
-        'Validation Error',
+        'Error',
         'Please enter username and password',
         snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     }
 
+    // Set loading to true - this will show loading indicator
     isLoading.value = true;
-    errorMessage.value = '';
 
     try {
+      // Create request object
       final request = LoginRequest(
         username: username.value,
         password: password.value,
       );
 
+      // Call API
       final result = await _apiService.login(request);
+
+      // Save user to state
       user.value = result;
 
-      // Store token and user data
+      // Save to local storage for auto-login
       await _storage.write(_tokenKey, result.token);
       await _storage.write(_userKey, result.toJson());
 
+      // Show success message
       Get.snackbar(
         'Success',
         'Welcome back, ${result.firstName}!',
@@ -116,14 +142,15 @@ class AuthController extends GetxController {
 
       return true;
     } catch (e) {
-      errorMessage.value = e.toString().replaceAll('Exception: ', '');
+      // Show error message
       Get.snackbar(
         'Error',
-        errorMessage.value,
+        e.toString().replaceAll('Exception: ', ''),
         snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     } finally {
+      // Always set loading to false when done
       isLoading.value = false;
     }
   }
@@ -136,7 +163,7 @@ class AuthController extends GetxController {
         password.value.isEmpty ||
         confirmPassword.value.isEmpty) {
       Get.snackbar(
-        'Validation Error',
+        'Error',
         'Please fill all fields',
         snackPosition: SnackPosition.BOTTOM,
       );
@@ -145,24 +172,14 @@ class AuthController extends GetxController {
 
     if (password.value != confirmPassword.value) {
       Get.snackbar(
-        'Validation Error',
+        'Error',
         'Passwords do not match',
         snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     }
 
-    if (password.value.length < 6) {
-      Get.snackbar(
-        'Validation Error',
-        'Password must be at least 6 characters',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return false;
-    }
-
     isLoading.value = true;
-    errorMessage.value = '';
 
     try {
       final request = SignupRequest(
@@ -174,7 +191,6 @@ class AuthController extends GetxController {
       final result = await _apiService.signup(request);
       user.value = result;
 
-      // Store token and user data
       await _storage.write(_tokenKey, result.token);
       await _storage.write(_userKey, result.toJson());
 
@@ -186,10 +202,9 @@ class AuthController extends GetxController {
 
       return true;
     } catch (e) {
-      errorMessage.value = e.toString().replaceAll('Exception: ', '');
       Get.snackbar(
         'Error',
-        errorMessage.value,
+        e.toString().replaceAll('Exception: ', ''),
         snackPosition: SnackPosition.BOTTOM,
       );
       return false;
@@ -198,10 +213,13 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Logout method
+  /// Logout - clear session data
   Future<void> logout() async {
+    // Remove from local storage
     await _storage.remove(_tokenKey);
     await _storage.remove(_userKey);
+
+    // Clear user state
     user.value = null;
 
     // Clear form fields
@@ -213,11 +231,11 @@ class AuthController extends GetxController {
 
     Get.snackbar(
       'Logged Out',
-      'You have been logged out successfully',
+      'You have been logged out',
       snackPosition: SnackPosition.BOTTOM,
     );
   }
 
-  /// Check if user is logged in
+  /// Check if user is currently logged in
   bool get isLoggedIn => user.value != null;
 }
