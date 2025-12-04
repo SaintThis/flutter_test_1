@@ -65,7 +65,25 @@ Using DummyJSON API:
 
 ## Known Issues
 
-None currently.
+### 1. TypeError: `type 'Null' is not a subtype of type 'String'`
+**Problem**: Login fails with null type error.
+
+**Cause**: DummyJSON API returns `accessToken` instead of `token` in the response.
+
+**Solution** (Already Fixed):
+```dart
+// In user_model.dart - fromJson()
+token: json['accessToken'] ?? json['token'] ?? '',
+```
+
+### 2. API Response Field Mapping
+**Problem**: Some API response fields may be null.
+
+**Solution**: Always use null-safe operators in model parsing:
+```dart
+id: json['id'] ?? 0,
+username: json['username'] ?? '',
+```
 
 ## Bonus Features Implemented
 
